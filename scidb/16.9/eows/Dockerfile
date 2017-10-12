@@ -50,14 +50,13 @@ RUN apt-get update \
 WORKDIR $DEV_DIR
 
 RUN export SCIDB_URL="https://docs.google.com/uc?id=0BzNaZtoQsmy2OG1WcXhiai1rak0&export=download" \
-	&& export SCIDB_FILE="scidb-16.9.0.db1a98f.tgz" \
-	&& wget --no-verbose --output-document ${SCIDB_FILE}\
+	&& wget --no-verbose --output-document scidb-16.9.0.db1a98f.tgz\
         --load-cookies cookies.txt \
         "$SCIDB_URL `wget --no-verbose --output-document - \
             --save-cookies cookies.txt "$SCIDB_URL" | \
             grep --only-matching 'confirm=[^&]*'`" \
     && mkdir scidb-${SCIDB_VER} \
-    && tar -xzf ${SCIDB_FILE} -C scidb-${SCIDB_VER}
+    && tar -xzf scidb-16.9.0.db1a98f.tgz -C scidb-${SCIDB_VER}
 
 WORKDIR scidb-${SCIDB_VER}
 
@@ -207,7 +206,7 @@ RUN cd $EOWS_BUILD_DIR \
 
 # ##############################################################################
 # Cleaning up
-RUN rm ${DEV_DIR}/${SCIDB_FILE} \
+RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
     
 RUN echo '#!/bin/bash \n\
