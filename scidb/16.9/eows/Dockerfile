@@ -4,10 +4,14 @@ MAINTAINER e-sensing team <esensing-team@dpi.inpe.br>
 VOLUME /data
 VOLUME /var/lib/postgresql/data
 
+
+# ##############################################################################
+# Exporting SCIDB and EOWS WebServer Port to be able to access through host machine
 EXPOSE 1239
 EXPOSE 7654
 
-ARG DEFAULT_DB=esensing
+ARG CLUSTER=esensing
+ARG MAKE_J=4
 
 # ##############################################################################
 # Configuration variables
@@ -26,7 +30,15 @@ ENV SCIDB_BUILD_PATH=${SCIDB_SOURCE_PATH}/stage/build
 ENV PATH=$SCIDB_INSTALL_PATH/bin:$PATH
 
 
+# ##############################################################################
+# Copying scripts
+COPY files/wait_for_postgres.sh /usr/local/bin
+COPY files/create_scidb_cluster.sh /usr/local/bin
 
+
+RUN chmod +x /usr/local/bin/wait_for_postgres.sh \
+    && chmod +x /usr/local/bin/create_scidb_cluster.sh
+    
 # ##############################################################################
 # Creating scidb user
 RUN groupadd $SCIDB_USR \
@@ -49,6 +61,8 @@ RUN apt-get update \
 
 WORKDIR $DEV_DIR
 
+# ##############################################################################
+# Downloading SciDB 16.9
 RUN export SCIDB_URL="https://docs.google.com/uc?id=0BzNaZtoQsmy2OG1WcXhiai1rak0&export=download" \
 	&& wget --no-verbose --output-document scidb-16.9.0.db1a98f.tgz\
         --load-cookies cookies.txt \
@@ -62,7 +76,7 @@ WORKDIR scidb-${SCIDB_VER}
 
 # ##############################################################################
 # Providing Passwordless SSH
-RUN service ssh restart \
+RUN service ssh start \
     && ssh-keygen -f /root/.ssh/id_rsa -N '' \
     && mkdir /home/$SCIDB_USR/.ssh \
     && ssh-keygen -f /home/$SCIDB_USR/.ssh/id_rsa -N '' \
@@ -76,7 +90,7 @@ RUN service ssh restart \
     && ssh $HOST_IP date
 
 # ##############################################################################
-## Installing Postgres
+## Installing PostgreSQL
 RUN service ssh start \
     && ./deployment/deploy.sh prepare_postgresql postgres postgres $NET_MASK $HOST_IP \
     && usermod -G $SCIDB_USR -a postgres \
@@ -100,7 +114,7 @@ RUN service ssh start \
 # Building SciDB
 RUN service ssh start \
 	&& ./run.py setup --force \
-    && ./run.py make -j4
+    && ./run.py make -j${MAKE_J}
 
 # ##############################################################################   
 # Instaling SciDB
@@ -110,35 +124,19 @@ RUN service ssh start \
     && mv ${SCIDB_SOURCE_PATH}/extern ${SCIDB_INSTALL_PATH}
     
 # ##############################################################################   
-# Configure SciDB
-RUN   service postgresql start \
-      && until pg_isready; do echo "."; sleep 1; done; sleep 2 \
-      && echo "[${DEFAULT_DB}]\n\
-server-0=127.0.0.1,3\n\
-db_user=postgres\n\
-no-watchdog=true\n\
-redundancy=0\n\
-install_root=${SCIDB_INSTALL_PATH}\n\
-pluginsdir=${SCIDB_INSTALL_PATH}/lib/scidb/plugins\n\
-logconf=${SCIDB_INSTALL_PATH}/share/scidb/log4cxx.properties\n\
-base-path=${DATA_DIR}/scidb/${SCIDB_VER}/${DEFAULT_DB}\n\
-base-port=1239\n\
-interface=eth0\n\
-pg-port=5432" | tee ${SCIDB_INSTALL_PATH}/etc/config.ini \
-
+# Configuring SciDB
+RUN service postgresql start \
+    && wait_for_postgres.sh\
     && sudo -u postgres psql -c "ALTER USER "postgres" WITH PASSWORD 'postgres';" \
-    
-	&& echo "127.0.0.1:5432:${DEFAULT_DB}:postgres:postgres" >> /home/${SCIDB_USR}/.pgpass \
+    && POSTGRES_HOME=$(echo ~postgres) \    
+	  && echo "127.0.0.1:5432:${CLUSTER}:postgres:postgres" | tee -a /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass \
     && chown ${SCIDB_USR}:${SCIDB_USR} /home/${SCIDB_USR}/.pgpass \
-    && chmod go-rwx /home/${SCIDB_USR}/.pgpass \
-    && POSTGRES_HOME=$(echo ~postgres) \
-    && cp /home/${SCIDB_USR}/.pgpass ${POSTGRES_HOME} \
     && chown postgres:postgres ${POSTGRES_HOME}/.pgpass \
-	&& cp /home/${SCIDB_USR}/.pgpass /root \
     && chown root:root /root/.pgpass \
-    
-	&& mkdir -p ${DATA_DIR}/scidb \
-    && chown -R ${SCIDB_USR}:${SCIDB_USR} ${DATA_DIR}
+    && chmod go-rwx /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass \
+ 	  && mkdir -p ${DATA_DIR}/scidb \
+    && chown -R ${SCIDB_USR}:${SCIDB_USR} ${DATA_DIR} \
+    && chown -R scidb:scidb $SCIDB_INSTALL_PATH
 
 
 # ##############################################################################
@@ -195,39 +193,36 @@ RUN cd $EOWS_BUILD_DIR \
                                  -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
                                  $EOWS_CODEBASE/build/cmake \
     # Compile
-    && make install -j8 \
+    && make install -j${MAKE_J} \
     # Cleaning up
     && cd ${EOWS_DEPENDENCIES_DIR} \
     && rm -rf ${EOWS_CODEBASE} ${EOWS_BUILD_DIR}
 
-# ##############################################################################
-# Exporting EOWS WebServer Port to be able to access through host machine
-# EXPOSE 7654
 
 # ##############################################################################
 # Cleaning up
 RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-    
-RUN echo '#!/bin/bash \n\
+
+
+# ##############################################################################
+# Creating docker-entry.sh
+RUN echo '#!/bin/bash\n\
 service ssh start \n\
 service postgresql start \n\
-until pg_isready; do echo "."; sleep 1; done; sleep 2\n' | tee -a /docker-entrypoint.sh \
-    && echo "if [ ! -f /root/scidb.config.lock ]; then\n\
-      echo 'Configurando scidb' \n\
-      touch /root/scidb.config.lock\n\
+wait_for_postgres.sh\n' | tee -a /docker-entrypoint.sh \
+    && echo "if [ ! -f ${DATA_DIR}/scidb.config.lock ]; then\n\
+      touch ${DATA_DIR}/scidb.config.lock\n\
+      echo 'First startup' \n\
+      echo 'Configurating SciDB cluster [$CLUSTER]' \n\
       # Creating Data folder and changing owner to scidb\n\
       mkdir -p $DATA_DIR/scidb\n\
       chown -R scidb:scidb $DATA_DIR/scidb\n\
-      chown -R scidb:scidb $SCIDB_INSTALL_PATH\n\
-      # Configure SciDB PostgreSQL metadata\n\
-      sudo -u postgres $SCIDB_INSTALL_PATH/bin/scidb.py init_syscat $DEFAULT_DB\n\
-      # Initialize SciDB database\n\
-      yes | $SCIDB_INSTALL_PATH/bin/scidb.py initall $DEFAULT_DB\n\
+      create_scidb_cluster.sh $CLUSTER\n\
     fi" | tee -a /docker-entrypoint.sh \
-    && echo "scidb.py startall $DEFAULT_DB" | tee -a /docker-entrypoint.sh \
+    && echo "scidb.py startall $CLUSTER" | tee -a /docker-entrypoint.sh \
     && echo "$EOWS_INSTALL_DIR/bin/eows_app_server --base-dir $EOWS_INSTALL_DIR &" | tee -a /docker-entrypoint.sh \
-    && echo "trap \"scidb.py stopall $DEFAULT_DB; service postgresql stop\" EXIT HUP INT QUIT TERM \n\
+    && echo "trap \"scidb.py stopall $CLUSTER; service postgresql stop\" EXIT HUP INT QUIT TERM \n\
 bash " | tee -a /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
 
