@@ -204,7 +204,6 @@ RUN git clone https://github.com/Paradigm4/dev_tools \
     && cd dev_tools \
     && make \
     && cp *.so $SCIDB_INSTALL_PATH/lib/scidb/plugins \
-#    && $SCIDB_INSTALL_PATH/bin/iquery -aq "load_library('dev_tools')" \
     && cd .. \
     && rm -rf dev_tools
 
