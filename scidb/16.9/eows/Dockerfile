@@ -17,12 +17,11 @@ ARG MAKE_J=4
 # Configuration variables
 ENV HOST_IP=127.0.0.1
 ENV NET_MASK=$HOST_IP/8
-ENV DEV_DIR=/home/$SCIDB_USR/Devel
 ENV DATA_DIR=/data
-
 ENV SCIDB_USR=scidb
 ENV SCIDB_PASS=scidb
 ENV SCIDB_VER=16.9
+ENV DEV_DIR=/home/$SCIDB_USR/Devel
 ENV SCIDB_INSTALL_PATH=/opt/scidb/${SCIDB_VER}
 ENV SCIDB_BUILD_TYPE=RelWithDebInfo
 ENV SCIDB_SOURCE_PATH=${DEV_DIR}/scidb-${SCIDB_VER}
@@ -33,12 +32,9 @@ ENV PATH=$SCIDB_INSTALL_PATH/bin:$PATH
 # ##############################################################################
 # Copying scripts
 COPY files/wait_for_postgres.sh /usr/local/bin
-COPY files/create_scidb_cluster.sh /usr/local/bin
+RUN chmod +x /usr/local/bin/wait_for_postgres.sh
 
-
-RUN chmod +x /usr/local/bin/wait_for_postgres.sh \
-    && chmod +x /usr/local/bin/create_scidb_cluster.sh
-    
+   
 # ##############################################################################
 # Creating scidb user
 RUN groupadd $SCIDB_USR \
@@ -113,7 +109,7 @@ RUN service ssh start \
 # ##############################################################################
 # Building SciDB
 RUN service ssh start \
-	&& ./run.py setup --force \
+	  && ./run.py setup --force \
     && ./run.py make -j${MAKE_J}
 
 # ##############################################################################   
@@ -129,11 +125,6 @@ RUN service postgresql start \
     && wait_for_postgres.sh\
     && sudo -u postgres psql -c "ALTER USER "postgres" WITH PASSWORD 'postgres';" \
     && POSTGRES_HOME=$(echo ~postgres) \    
-	  && echo "127.0.0.1:5432:${CLUSTER}:postgres:postgres" | tee -a /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass \
-    && chown ${SCIDB_USR}:${SCIDB_USR} /home/${SCIDB_USR}/.pgpass \
-    && chown postgres:postgres ${POSTGRES_HOME}/.pgpass \
-    && chown root:root /root/.pgpass \
-    && chmod go-rwx /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass \
  	  && mkdir -p ${DATA_DIR}/scidb \
     && chown -R ${SCIDB_USR}:${SCIDB_USR} ${DATA_DIR} \
     && chown -R scidb:scidb $SCIDB_INSTALL_PATH
@@ -201,7 +192,7 @@ RUN cd $EOWS_BUILD_DIR \
 
 # ##############################################################################
 # Cleaning up
-RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz \
+RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz $DEV_DIR/cookies.txt \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 
@@ -225,6 +216,9 @@ wait_for_postgres.sh\n' | tee -a /docker-entrypoint.sh \
     && echo "trap \"scidb.py stopall $CLUSTER; service postgresql stop\" EXIT HUP INT QUIT TERM \n\
 bash " | tee -a /docker-entrypoint.sh \
     && chmod +x /docker-entrypoint.sh
+
+COPY files/create_scidb_cluster.sh /usr/local/bin
+RUN  chmod +x /usr/local/bin/create_scidb_cluster.sh
 
 ENTRYPOINT  /docker-entrypoint.sh
 

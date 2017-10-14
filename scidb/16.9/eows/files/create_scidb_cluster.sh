@@ -20,6 +20,7 @@ fi
 
 DB=$1
 
+echo "Updating config.ini ..."
 echo -e "[${DB}]\n\
 server-0=127.0.0.1,3\n\
 db_user=postgres\n\
@@ -28,13 +29,22 @@ redundancy=0\n\
 install_root=${SCIDB_INSTALL_PATH}\n\
 pluginsdir=${SCIDB_INSTALL_PATH}/lib/scidb/plugins\n\
 logconf=${SCIDB_INSTALL_PATH}/share/scidb/log4cxx.properties\n\
-base-path=${DATA_DIR}/scidb/${SCIDB_VER}/${DEFAULT_DB}\n\
+base-path=${DATA_DIR}/scidb/${SCIDB_VER}/${DB}\n\
 base-port=1239\n\
 interface=eth0\n\
-pg-port=5432" | tee -a ${SCIDB_INSTALL_PATH}/etc/config.ini
+pg-port=5432" | tee -a ${SCIDB_INSTALL_PATH}/etc/config.ini > /dev/null
 
+echo "Adding Cluster to PostgreSQL configuration ..."
 POSTGRES_HOME=$(echo ~postgres)
-echo "127.0.0.1:5432:${DB}:postgres:postgres" | tee -a /home/${SCIDB_USR}/.pgpass ${POSTGRES_HOME}/.pgpass /root/.pgpass
+echo "127.0.0.1:5432:${DB}:postgres:postgres" | tee -a /home/${SCIDB_USR}/.pgpass > /dev/null ${POSTGRES_HOME}/.pgpass /root/.pgpass
+chown ${SCIDB_USR}:${SCIDB_USR} /home/${SCIDB_USR}/.pgpass
+chown postgres:postgres ${POSTGRES_HOME}/.pgpass
+chown root:root /root/.pgpass
+chmod go-rwx /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass
 
+echo "Initializing cluster ..."
 sudo -u postgres $SCIDB_INSTALL_PATH/bin/scidb.py init_syscat $DB
 yes | $SCIDB_INSTALL_PATH/bin/scidb.py initall $DB
+echo
+echo "Done !"
+
