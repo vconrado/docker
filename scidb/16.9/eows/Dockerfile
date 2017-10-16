@@ -204,21 +204,31 @@ RUN echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu trusty/" | tee -a /e
     && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9 \
     && gpg --keyserver keyserver.ubuntu.com --recv-key E084DAB9 \
     && gpg -a --export E084DAB9 | sudo apt-key add - \
+    && add-apt-repository ppa:ubuntugis/ubuntugis-unstable \
     && apt-get update \
-    && apt-get install -y libcurl4-gnutls-dev ed libgdal-dev libproj-dev r-base r-base-dev
+    && apt-get install -y libcurl4-gnutls-dev libcurl4-openssl-dev \
+                          libssl-dev openssl \
+                          libxml2-dev \
+                          libproj-dev \
+                          libudunits2-dev \
+                          libgdal20 gdal-bin libgdal-dev \
+                          libgl1-mesa-dev freeglut3 freeglut3-dev \
+                          r-base r-base-dev
 
-RUN R -e "install.packages('devtools', repos='https://cran.uni-muenster.de');\
+RUN R -e "install.packages('devtools', repos='https://ftp.gwdg.de/pub/misc/cran');\
 library(devtools);\
-install.packages('tidyverse', repos='https://cran.uni-muenster.de');\
+install.packages('tidyverse', repos='https://ftp.gwdg.de/pub/misc/cran');\
 library(tidyverse);\
-install.packages('plyr');\
+install.packages('plyr', repos='https://ftp.gwdg.de/pub/misc/cran');\
 library(plyr);\
-install.packages('rgdal', repos='https://cran.uni-muenster.de');\
+install.packages('rgdal', repos='https://ftp.gwdg.de/pub/misc/cran');\
 library(rgdal);\
-install.packages('dtwSat', repos='https://cran.uni-muenster.de');\
-library(dtwSat);\
-detach(2, unload = TRUE);\
-devtools::install_github('e-sensing/sits', ref = '8fe5a04');\
+install.packages('sf', repos='https://ftp.gwdg.de/pub/misc/cran');\
+library(sf);\
+install.packages('rgl', repos='https://ftp.gwdg.de/pub/misc/cran');\
+library(rgl);\
+install.packages('TSdist', repos='https://ftp.gwdg.de/pub/misc/cran');\
+devtools::install_github('e-sensing/sits');\
 library(sits)"
 
 # ##############################################################################
@@ -231,21 +241,29 @@ RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz $DEV_DIR/cookies.txt \
 RUN echo '#!/bin/bash\n\
 service ssh start \n\
 service postgresql start \n\
-wait_for_postgres.sh\n' | tee -a /docker-entrypoint.sh \
-    && echo "if [ ! -f ${DATA_DIR}/scidb.config.lock ]; then\n\
-      touch ${DATA_DIR}/scidb.config.lock\n\
-      echo 'First startup' \n\
-      echo 'Configurating SciDB cluster [$CLUSTER]' \n\
-      # Creating Data folder and changing owner to scidb\n\
-      mkdir -p $DATA_DIR/scidb\n\
-      chown -R scidb:scidb $DATA_DIR/scidb\n\
-      create_scidb_cluster.sh $CLUSTER\n\
-    fi" | tee -a /docker-entrypoint.sh \
-    && echo "scidb.py startall $CLUSTER" | tee -a /docker-entrypoint.sh \
-    && echo "$EOWS_INSTALL_DIR/bin/eows_app_server --base-dir $EOWS_INSTALL_DIR &" | tee -a /docker-entrypoint.sh \
-    && echo "trap \"scidb.py stopall $CLUSTER; service postgresql stop\" EXIT HUP INT QUIT TERM \n\
-bash " | tee -a /docker-entrypoint.sh \
-    && chmod +x /docker-entrypoint.sh
+wait_for_postgres.sh\n\
+
+if [ ! -f ${DATA_DIR}/scidb.config.lock ]; then\n\
+    touch ${DATA_DIR}/scidb.config.lock\n\
+    echo 'First startup' \n\
+    echo 'Configurating SciDB cluster [$CLUSTER]' \n\
+    # Creating Data folder and changing owner to scidb\n\
+    mkdir -p $DATA_DIR/scidb\n\
+    chown -R scidb:scidb $DATA_DIR/scidb\n\
+    create_scidb_cluster.sh $CLUSTER\n\
+    scidb.py startall $CLUSTER\n\
+
+    # Configuring SciDB Plugins
+    iquery -aq "load_library('dev_tools')"\n\
+    iquery -aq "install_github('paradigm4/stream', 'd3f5393e5a9a8eba6f8ff777105ef031f48e3d3d');"\n\
+    iquery -aq "load_library('stream');"\n\
+else\n\
+    scidb.py startall $CLUSTER\n\
+fi\n\
+
+$EOWS_INSTALL_DIR/bin/eows_app_server --base-dir $EOWS_INSTALL_DIR &\n\
+trap "scidb.py stopall $CLUSTER; service postgresql stop" EXIT HUP INT QUIT TERM \n\
+bash' | tee -a /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh
 
 COPY files/create_scidb_cluster.sh /usr/local/bin
 RUN  chmod +x /usr/local/bin/create_scidb_cluster.sh
