@@ -1,5 +1,5 @@
 FROM ubuntu:14.04
-MAINTAINER e-sensing team <esensing-team@dpi.inpe.br>
+LABEL maintainer="e-sensing team <esensing-team@dpi.inpe.br>"
 
 VOLUME /data
 VOLUME /var/lib/postgresql/data
@@ -189,12 +189,42 @@ RUN cd $EOWS_BUILD_DIR \
     && cd ${EOWS_DEPENDENCIES_DIR} \
     && rm -rf ${EOWS_CODEBASE} ${EOWS_BUILD_DIR}
 
+# ##############################################################################
+# Installing Dev_tools
+RUN git clone https://github.com/Paradigm4/dev_tools \
+    && cd dev_tools \
+    && make \
+    && cp *.so $SCIDB_INSTALL_PATH/lib/scidb/plugins \
+    && cd .. \
+    && rm -rf dev_tools
+
+# ##############################################################################
+# Installing R
+RUN echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu trusty/" | tee -a /etc/apt/sources.list \
+    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9 \
+    && gpg --keyserver keyserver.ubuntu.com --recv-key E084DAB9 \
+    && gpg -a --export E084DAB9 | sudo apt-key add - \
+    && apt-get update \
+    && apt-get install -y libcurl4-gnutls-dev ed libgdal-dev libproj-dev r-base r-base-dev
+
+RUN R -e "install.packages('devtools', repos='https://cran.uni-muenster.de');\
+library(devtools);\
+install.packages('tidyverse', repos='https://cran.uni-muenster.de');\
+library(tidyverse);\
+install.packages('plyr');\
+library(plyr);\
+install.packages('rgdal', repos='https://cran.uni-muenster.de');\
+library(rgdal);\
+install.packages('dtwSat', repos='https://cran.uni-muenster.de');\
+library(dtwSat);\
+detach(2, unload = TRUE);\
+devtools::install_github('e-sensing/sits', ref = '8fe5a04');\
+library(sits)"
 
 # ##############################################################################
 # Cleaning up
 RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz $DEV_DIR/cookies.txt \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
 
 # ##############################################################################
 # Creating docker-entry.sh
@@ -221,6 +251,3 @@ COPY files/create_scidb_cluster.sh /usr/local/bin
 RUN  chmod +x /usr/local/bin/create_scidb_cluster.sh
 
 ENTRYPOINT  /docker-entrypoint.sh
-
-
-
