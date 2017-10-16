@@ -200,8 +200,7 @@ RUN git clone https://github.com/Paradigm4/dev_tools \
 
 # ##############################################################################
 # Installing R
-# https://cran.uni-muenster.de
-RUN echo "deb https://cran.cnr.berkeley.edu/bin/linux/ubuntu/ trusty/" | tee -a /etc/apt/sources.list \
+RUN echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu/ trusty/" | tee -a /etc/apt/sources.list \
     && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9 \
     && gpg --keyserver keyserver.ubuntu.com --recv-key E084DAB9 \
     && gpg -a --export E084DAB9 | sudo apt-key add - \
