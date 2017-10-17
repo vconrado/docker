@@ -1,4 +1,5 @@
-FROM eows-example
+FROM esensing-scidb
+
 LABEL maintainer="e-sensing team <esensing-team@dpi.inpe.br>"
 
 VOLUME /data
