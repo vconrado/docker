@@ -94,8 +94,8 @@ export SCIDB_BUILD_TYPE=RelWithDebInfo\n\
 export SCIDB_SOURCE_PATH=/home/scidb/Devel/scidb-${SCIDB_VER} \n\
 export SCIDB_BUILD_PATH=/home/scidb/Devel/scidb-${SCIDB_VER}/stage/build\n\
 export PATH=$SCIDB_INSTALL_PATH/bin:$PATH" | tee -a /root/.bashrc /home/$SCIDB_USR/.bashrc \
-    && ./deployment/deploy.sh prepare_toolchain $HOST_IP
-	  && ./run.py setup --force \
+    && ./deployment/deploy.sh prepare_toolchain $HOST_IP \
+    && ./run.py setup --force \
     && ./run.py make -j${MAKE_J} \
     && yes n | ./run.py install --light \
     # Moving SciDB extern to SCIDB_INSTALL_PATH to fix Murmurhash dependency
@@ -151,16 +151,16 @@ library(sits)"
 # ##############################################################################
 # Creating docker-entry.sh
 RUN echo '#!/bin/bash\n\
-service ssh start \n\
-service postgresql start \n\
+sudo service ssh start \n\
+sudo service postgresql start \n\
 wait_for_postgres.sh\n' | tee -a /docker-entrypoint.sh \
     && echo "if [ ! -f ${DATA_DIR}/scidb.config.lock ]; then\n\
-      touch ${DATA_DIR}/scidb.config.lock\n\
+      sudo touch ${DATA_DIR}/scidb.config.lock\n\
       echo 'First startup' \n\
       echo 'Configurating SciDB cluster [$CLUSTER]' \n\
       # Creating Data folder and changing owner to scidb\n\
-      mkdir -p $DATA_DIR/scidb\n\
-      chown -R scidb:scidb $DATA_DIR/scidb\n\
+      sudo mkdir -p $DATA_DIR/scidb\n\
+      sudo chown -R scidb:scidb $DATA_DIR/scidb\n\
       create_scidb_cluster.sh $CLUSTER\n\
       scidb.py startall $CLUSTER\n\
       # Configuring SciDB Plugins\n\
@@ -171,12 +171,17 @@ wait_for_postgres.sh\n' | tee -a /docker-entrypoint.sh \
     else\n\
       scidb.py startall $CLUSTER\n\
     fi" | tee -a /docker-entrypoint.sh \
-    && echo "$EOWS_INSTALL_DIR/bin/eows_app_server --base-dir $EOWS_INSTALL_DIR &" | tee -a /docker-entrypoint.sh \
-    && echo "trap \"scidb.py stopall $CLUSTER; service postgresql stop\" EXIT HUP INT QUIT TERM \n\
+    && echo "trap \"scidb.py stopall $CLUSTER; sudo service postgresql stop\" EXIT HUP INT QUIT TERM \n\
 bash " | tee -a /docker-entrypoint.sh \
-    && chmod +x /docker-entrypoint.sh
+    && chmod +x /docker-entrypoint.sh\ 
+    && cat /home/${SCIDB_USR}/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
+
+
+RUN echo 'scidb ALL=(ALL:ALL) NOPASSWD:ALL' | sudo EDITOR='tee -a' visudo
 
 COPY files/create_scidb_cluster.sh /usr/local/bin
 RUN  chmod +x /usr/local/bin/create_scidb_cluster.sh
 
+WORKDIR /home/${SCIDB_USR}
+USER scidb
 ENTRYPOINT  /docker-entrypoint.sh
