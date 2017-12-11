@@ -53,7 +53,8 @@ RUN apt-get update \
 						   expect \
 						   openssh-server \
 						   openssh-client \
-						   vim
+						   vim \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR $DEV_DIR
 
@@ -66,12 +67,12 @@ RUN export SCIDB_URL="https://docs.google.com/uc?id=0BzNaZtoQsmy2OG1WcXhiai1rak0
             --save-cookies cookies.txt "$SCIDB_URL" | \
             grep --only-matching 'confirm=[^&]*'`" \
     && mkdir scidb-${SCIDB_VER} \
-    && tar -xzf scidb-16.9.0.db1a98f.tgz -C scidb-${SCIDB_VER}
+    && tar -xzf scidb-16.9.0.db1a98f.tgz -C scidb-${SCIDB_VER} \
+    && rm scidb-16.9.0.db1a98f.tgz cookies.txt
 
 WORKDIR scidb-${SCIDB_VER}
 
 # ##############################################################################
-# Providing Passwordless SSH
 RUN service ssh start \
     && ssh-keygen -f /root/.ssh/id_rsa -N '' \
     && mkdir /home/$SCIDB_USR/.ssh \
@@ -83,64 +84,34 @@ RUN service ssh start \
     && chown -R $SCIDB_USR:$SCIDB_USR /home/$SCIDB_USR \
     && ./deployment/deploy.sh access root NA "" $HOST_IP \
     && ./deployment/deploy.sh access $SCIDB_USR NA "" $HOST_IP \
-    && ssh $HOST_IP date
-
-# ##############################################################################
-## Installing PostgreSQL
-RUN service ssh start \
+    && ssh $HOST_IP date \
     && ./deployment/deploy.sh prepare_postgresql postgres postgres $NET_MASK $HOST_IP \
     && usermod -G $SCIDB_USR -a postgres \
-    && chmod g+rx $DEV_DIR
-
-# ##############################################################################
-# Configuring Environment Variables in bashrc files
-RUN echo "export SCIDB_VER=16.9\n\
+    && chmod g+rx $DEV_DIR \
+    && echo "export SCIDB_VER=16.9\n\
 export SCIDB_INSTALL_PATH=${SCIDB_INSTALL_PATH}\n\
 export SCIDB_BUILD_TYPE=RelWithDebInfo\n\
 export SCIDB_SOURCE_PATH=/home/scidb/Devel/scidb-${SCIDB_VER} \n\
 export SCIDB_BUILD_PATH=/home/scidb/Devel/scidb-${SCIDB_VER}/stage/build\n\
-export PATH=$SCIDB_INSTALL_PATH/bin:$PATH" | tee -a /root/.bashrc /home/$SCIDB_USR/.bashrc
-
-# ##############################################################################
-# Installing Build Tools SciDB
-RUN service ssh start \
+export PATH=$SCIDB_INSTALL_PATH/bin:$PATH" | tee -a /root/.bashrc /home/$SCIDB_USR/.bashrc \
     && ./deployment/deploy.sh prepare_toolchain $HOST_IP
-	
-# ##############################################################################
-# Building SciDB
-RUN service ssh start \
 	  && ./run.py setup --force \
-    && ./run.py make -j${MAKE_J}
-
-# ##############################################################################   
-# Instaling SciDB
-	RUN service ssh start \
+    && ./run.py make -j${MAKE_J} \
     && yes n | ./run.py install --light \
     # Moving SciDB extern to SCIDB_INSTALL_PATH to fix Murmurhash dependency
-    && mv ${SCIDB_SOURCE_PATH}/extern ${SCIDB_INSTALL_PATH}
-    
-# ##############################################################################   
-# Configuring SciDB
-RUN service postgresql start \
-    && wait_for_postgres.sh\
+    && mv ${SCIDB_SOURCE_PATH}/extern ${SCIDB_INSTALL_PATH} \
     && sudo -u postgres psql -c "ALTER USER "postgres" WITH PASSWORD 'postgres';" \
     && POSTGRES_HOME=$(echo ~postgres) \    
  	  && mkdir -p ${DATA_DIR}/scidb \
     && chown -R ${SCIDB_USR}:${SCIDB_USR} ${DATA_DIR} \
-    && chown -R scidb:scidb $SCIDB_INSTALL_PATH
-
-# ##############################################################################
-# Installing Dev_tools
-RUN git clone https://github.com/Paradigm4/dev_tools \
+    && chown -R scidb:scidb $SCIDB_INSTALL_PATH \
+    && git clone https://github.com/Paradigm4/dev_tools \
     && cd dev_tools \
     && make \
     && cp *.so $SCIDB_INSTALL_PATH/lib/scidb/plugins \
     && cd .. \
-    && rm -rf dev_tools
-
-# ##############################################################################
-# Installing R
-RUN echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu/ trusty/" | tee -a /etc/apt/sources.list \
+    && rm -rf dev_tools \
+    && echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu/ trusty/" | tee -a /etc/apt/sources.list \
     && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9 \
     && gpg --keyserver keyserver.ubuntu.com --recv-key E084DAB9 \
     && gpg -a --export E084DAB9 | sudo apt-key add - \
@@ -153,7 +124,13 @@ RUN echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu/ trusty/" | tee -a /
                           libudunits2-dev \
                           libgdal20 gdal-bin libgdal-dev \
                           libgl1-mesa-dev freeglut3 freeglut3-dev \
-                          r-base r-base-dev
+                          r-base r-base-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    && rm -rf ${DEV_DIR}
+# ##############################################################################
+	
+
+
 
 RUN R -e "install.packages('devtools', repos='https://ftp.gwdg.de/pub/misc/cran');\
 library(devtools);\
@@ -170,11 +147,6 @@ library(rgl);\
 install.packages('TSdist', repos='https://ftp.gwdg.de/pub/misc/cran');\
 devtools::install_github('e-sensing/sits');\
 library(sits)"
-
-# ##############################################################################
-# Cleaning up
-RUN rm ${DEV_DIR}/scidb-16.9.0.db1a98f.tgz $DEV_DIR/cookies.txt \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # ##############################################################################
 # Creating docker-entry.sh
