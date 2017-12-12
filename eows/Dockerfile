@@ -1,4 +1,4 @@
-FROM esensing-scidb
+FROM terrama2.dpi.inpe.br:443/scidb:16.9
 
 LABEL maintainer="e-sensing team <esensing-team@dpi.inpe.br>"
 
@@ -18,6 +18,7 @@ ENV EOWS_CODEBASE=$EOWS_PATH/codebase
 ENV EOWS_BUILD_DIR=$EOWS_PATH/build-release
 ENV EOWS_INSTALL_DIR=/opt/eows/0.5.0
 
+USER root
 # ##############################################################################
 # Installing CMAKE 3.X
 RUN mkdir -p $EOWS_DEPENDENCIES_DIR $EOWS_CODEBASE $EOWS_BUILD_DIR \
