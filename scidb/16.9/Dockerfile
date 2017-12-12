@@ -10,8 +10,7 @@ VOLUME /var/lib/postgresql/data
 EXPOSE 1239
 EXPOSE 7654
 
-ARG CLUSTER=esensing
-ARG MAKE_J=4
+ARG MAKE_J=16
 
 # ##############################################################################
 # Configuration variables
@@ -81,6 +80,7 @@ RUN service ssh start \
     && cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys \
     && cat /root/.ssh/id_rsa.pub >> /home/$SCIDB_USR/.ssh/authorized_keys \
     && cat /home/$SCIDB_USR/.ssh/id_rsa.pub >> /home/$SCIDB_USR/.ssh/authorized_keys \
+    && cat /home/$SCIDB_USR/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys \
     && chown -R $SCIDB_USR:$SCIDB_USR /home/$SCIDB_USR \
     && ./deployment/deploy.sh access root NA "" $HOST_IP \
     && ./deployment/deploy.sh access $SCIDB_USR NA "" $HOST_IP \
@@ -105,83 +105,20 @@ export PATH=$SCIDB_INSTALL_PATH/bin:$PATH" | tee -a /root/.bashrc /home/$SCIDB_U
  	  && mkdir -p ${DATA_DIR}/scidb \
     && chown -R ${SCIDB_USR}:${SCIDB_USR} ${DATA_DIR} \
     && chown -R scidb:scidb $SCIDB_INSTALL_PATH \
-    && git clone https://github.com/Paradigm4/dev_tools \
-    && cd dev_tools \
-    && make \
-    && cp *.so $SCIDB_INSTALL_PATH/lib/scidb/plugins \
-    && cd .. \
-    && rm -rf dev_tools \
-    && echo "deb https://cran.uni-muenster.de/bin/linux/ubuntu/ trusty/" | tee -a /etc/apt/sources.list \
-    && apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9 \
-    && gpg --keyserver keyserver.ubuntu.com --recv-key E084DAB9 \
-    && gpg -a --export E084DAB9 | sudo apt-key add - \
-    && add-apt-repository ppa:ubuntugis/ubuntugis-unstable \
-    && apt-get update \
-    && apt-get install -y libcurl4-openssl-dev \
-                          libssl-dev openssl \
-                          libxml2-dev \
-                          libproj-dev \
-                          libudunits2-dev \
-                          libgdal20 gdal-bin libgdal-dev \
-                          libgl1-mesa-dev freeglut3 freeglut3-dev \
-                          r-base r-base-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && rm -rf ${DEV_DIR}
-# ##############################################################################
-	
-
-
-
-RUN R -e "install.packages('devtools', repos='https://ftp.gwdg.de/pub/misc/cran');\
-library(devtools);\
-install.packages('tidyverse', repos='https://ftp.gwdg.de/pub/misc/cran');\
-library(tidyverse);\
-install.packages('plyr', repos='https://ftp.gwdg.de/pub/misc/cran');\
-library(plyr);\
-install.packages('rgdal', repos='https://ftp.gwdg.de/pub/misc/cran');\
-library(rgdal);\
-install.packages('sf', repos='https://ftp.gwdg.de/pub/misc/cran');\
-library(sf);\
-install.packages('rgl', repos='https://ftp.gwdg.de/pub/misc/cran');\
-library(rgl);\
-install.packages('TSdist', repos='https://ftp.gwdg.de/pub/misc/cran');\
-devtools::install_github('e-sensing/sits');\
-library(sits)"
 
 # ##############################################################################
-# Creating docker-entry.sh
-RUN echo '#!/bin/bash\n\
-sudo service ssh start \n\
-sudo service postgresql start \n\
-wait_for_postgres.sh\n' | tee -a /docker-entrypoint.sh \
-    && echo "if [ ! -f ${DATA_DIR}/scidb.config.lock ]; then\n\
-      sudo touch ${DATA_DIR}/scidb.config.lock\n\
-      echo 'First startup' \n\
-      echo 'Configurating SciDB cluster [$CLUSTER]' \n\
-      # Creating Data folder and changing owner to scidb\n\
-      sudo mkdir -p $DATA_DIR/scidb\n\
-      sudo chown -R scidb:scidb $DATA_DIR/scidb\n\
-      create_scidb_cluster.sh $CLUSTER\n\
-      scidb.py startall $CLUSTER\n\
-      # Configuring SciDB Plugins\n\
-      iquery -aq \"load_library('dev_tools')\"\n\
-      echo \"Installing Stream...\"\n\
-      iquery -aq \"install_github('paradigm4/stream', 'd3f5393e5a9a8eba6f8ff777105ef031f48e3d3d');\"\n\
-      iquery -aq \"load_library('stream');\"\n\
-    else\n\
-      scidb.py startall $CLUSTER\n\
-    fi" | tee -a /docker-entrypoint.sh \
-    && echo "trap \"scidb.py stopall $CLUSTER; sudo service postgresql stop\" EXIT HUP INT QUIT TERM \n\
-bash " | tee -a /docker-entrypoint.sh \
-    && chmod +x /docker-entrypoint.sh\ 
-    && cat /home/${SCIDB_USR}/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
-
-
 RUN echo 'scidb ALL=(ALL:ALL) NOPASSWD:ALL' | sudo EDITOR='tee -a' visudo
 
+# ##############################################################################
 COPY files/create_scidb_cluster.sh /usr/local/bin
 RUN  chmod +x /usr/local/bin/create_scidb_cluster.sh
 
+COPY files/docker-entrypoint.sh /
+RUN  chmod +x /docker-entrypoint.sh
+
 WORKDIR /home/${SCIDB_USR}
 USER scidb
+
 ENTRYPOINT  /docker-entrypoint.sh
