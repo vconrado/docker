@@ -1,0 +1,127 @@
+FROM terrama2.dpi.inpe.br:443/scidb-multi-node-base:16.9
+LABEL maintainer="e-sensing team <esensing-team@dpi.inpe.br>"
+
+VOLUME /data
+VOLUME /var/lib/postgresql/data
+
+
+# ##############################################################################
+# Exporting SCIDB Port to be able to access through host machine
+EXPOSE 1239
+EXPOSE 5432
+EXPOSE 22
+
+ARG CLUSTER=esensing
+ARG MAKE_J=8
+ARG SCIDB_WORKER_IP=172.0.0.1
+
+# ##############################################################################
+# Configuration variables
+ENV HOST_IP=127.0.0.1
+ENV NET_MASK=$HOST_IP/8
+ENV DATA_DIR=/data
+ENV SCIDB_USR=scidb
+ENV SCIDB_PASS=scidb
+ENV SCIDB_VER=16.9
+ENV DEV_DIR=/home/$SCIDB_USR/Devel
+ENV SCIDB_INSTALL_PATH=/opt/scidb/${SCIDB_VER}
+ENV SCIDB_BUILD_TYPE=Release
+ENV SCIDB_SOURCE_PATH=${DEV_DIR}/scidb-${SCIDB_VER}
+ENV SCIDB_BUILD_PATH=${SCIDB_SOURCE_PATH}/stage/build
+ENV PATH=$SCIDB_INSTALL_PATH/bin:$PATH
+
+
+# ##############################################################################
+# Copying scripts
+COPY files/wait_for_postgres.sh /usr/local/bin
+RUN chmod +x /usr/local/bin/wait_for_postgres.sh
+
+   
+# ##############################################################################
+# Creating scidb user
+RUN mkdir -p $DEV_DIR && \
+    chown $SCIDB_USR:$SCIDB_USR $DEV_DIR 
+
+
+WORKDIR $DEV_DIR
+
+# ##############################################################################
+# Downloading SciDB 16.9
+RUN export SCIDB_URL="https://docs.google.com/uc?id=0BzNaZtoQsmy2OG1WcXhiai1rak0&export=download" \
+	&& wget --no-verbose --output-document scidb-16.9.0.db1a98f.tgz\
+        --load-cookies cookies.txt \
+        "$SCIDB_URL `wget --no-verbose --output-document - \
+            --save-cookies cookies.txt "$SCIDB_URL" | \
+            grep --only-matching 'confirm=[^&]*'`" \
+    && mkdir scidb-${SCIDB_VER} \
+    && tar -xzf scidb-16.9.0.db1a98f.tgz -C scidb-${SCIDB_VER} \
+    && rm scidb-16.9.0.db1a98f.tgz cookies.txt
+
+WORKDIR scidb-${SCIDB_VER}
+
+# ##############################################################################
+
+RUN service ssh start \
+    && ./deployment/deploy.sh access root NA "" $HOST_IP \
+    && ./deployment/deploy.sh access $SCIDB_USR NA "" $HOST_IP \
+    && ssh $HOST_IP date 
+
+    # Installing Build Tools
+RUN service ssh start \
+    && ./deployment/deploy.sh prepare_toolchain $HOST_IP 
+    # Preparing a Chroot (Multi-Server Only)
+RUN service ssh start \
+    && echo "${SCIDB_PASS}" | ./deployment/deploy.sh prepare_chroot $SCIDB_USR $HOST_IP 
+    # Installing Postgres
+RUN service ssh start \
+    && ./deployment/deploy.sh prepare_postgresql postgres postgres $NET_MASK $HOST_IP \
+    && usermod -G $SCIDB_USR -a postgres \
+    && chmod g+rx $DEV_DIR \
+    && echo "export SCIDB_VER=${SCIDB_VER}\n\
+export SCIDB_INSTALL_PATH=${SCIDB_INSTALL_PATH}\n\
+export SCIDB_BUILD_TYPE=${SCIDB_BUILD_TYPE}\n\
+export SCIDB_SOURCE_PATH=${DEV_DIR}/scidb-${SCIDB_VER} \n\
+export SCIDB_BUILD_PATH=${DEV_DIR}/scidb-${SCIDB_VER}/stage/build\n\
+#export PATH=$SCIDB_INSTALL_PATH/bin:$PATH" | tee -a /root/.bashrc /home/$SCIDB_USR/.bashrc 
+
+    # Installing a Multi-Node SciDB Instance  
+    # Building SciDB CE
+RUN service ssh start \
+    && ./run.py setup --force \
+    && ./run.py make -j${MAKE_J} \
+    && yes n | ./run.py install --light \
+    # Moving SciDB extern to SCIDB_INSTALL_PATH to fix Murmurhash dependency
+    && mv ${SCIDB_SOURCE_PATH}/extern ${SCIDB_INSTALL_PATH} \
+    && sudo -u postgres psql -c "ALTER USER "postgres" WITH PASSWORD 'postgres';" \
+    && POSTGRES_HOME=$(echo ~postgres) \
+          && mkdir -p ${DATA_DIR}/scidb \
+    && chown -R ${SCIDB_USR}:${SCIDB_USR} ${DATA_DIR} \
+    && chown -R scidb:scidb $SCIDB_INSTALL_PATH \
+    && mkdir -p /tmp/scidb/build
+    && SCIDB_BUILD_PATH=/tmp/scidb/build \
+    && cp -r /home/scidb/pbuilder /root
+    && cd .. \
+    &&./scidb-16.9/deployment/deploy.sh build RelWithDebInfo /tmp/packages \
+    && mkdir /tmp/dbg_packages \
+    && mv /tmp/packages/*dbg* /tmp/dbg_packages
+
+RUN service ssh start \
+    && ./deployment/deploy.sh scidb_install /tmp/packages ${HOST_IP} ${SCIDB_WORKER_IP}
+
+RUN service ssh start \
+   && ./deployment/deploy.sh scidb_remove /tmp/packages ${HOST_IP} ${SCIDB_WORKER_IP}
+
+
+# ##############################################################################
+# Creating docker-entry.sh
+COPY files/docker-entrypoint.sh /
+RUN  chmod +x /docker-entrypoint.sh
+
+RUN echo 'scidb ALL=(ALL:ALL) NOPASSWD:ALL' | sudo EDITOR='tee -a' visudo
+
+#COPY files/create_scidb_cluster.sh /usr/local/bin
+#RUN  chmod +x /usr/local/bin/create_scidb_cluster.sh
+
+WORKDIR /home/${SCIDB_USR}
+USER scidb
+ENTRYPOINT  /docker-entrypoint.sh
