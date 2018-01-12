@@ -41,4 +41,6 @@ library(sits)"
 WORKDIR /home/${SCIDB_USR}
 USER scidb
 
+COPY docker-entrypoint.sh /
+
 ENTRYPOINT  /docker-entrypoint.sh
