@@ -5,7 +5,7 @@ Hosts are named: host1, host2, host3, host4 and host5, while containers are name
 
 # Preparing overlay network
 
-In order to allow each container do communicate to each others, we will use an overlay network.
+To allow each container to communicate with others, we are using an overlay network.
 ![Overlay Network example](http://blog.nigelpoulton.com/wp-content/uploads/2016/10/Figure8-2-1024x586.png "Overlay Network example")
 
 First, it is necessary to create a swarm and attach all hosts. On the master host (**host1**) type the following command in the terminal: 
@@ -44,29 +44,38 @@ docker run -it -d -v scidb-data:/data -v scidb-pg:/var/lib/postgresql/data -v /d
 
 # Running Workers SciDB (host2, host3, host4, host5)
 
-On each worker host (2, 3, 4 and 5) type the following command changing the instance name (**NN**):
+On each worker host (2, 3, 4 and 5) type the following command on each host:
 
+**host2**
 ```bash
 docker run -it -d -v /disks/d1:/disks/d1 -v /disks/d2:/disks/d2 -v /disks/d3:/disks/d3 -v /disks/d4:/disks/d4 -v /disks/d5:/disks/d5 -v /disks/d6:/disks/d6 -v /disks/d7:/disks/d7 -v /disks/d8:/disks/d8 -v /disks/d8/shared_disk/scidb/etc:/opt/scidb/16.9/etc -v /disks/d8/shared_disk/scidb/shared:/shared --name scidb-02 --restart unless-stopped --network scidb_net terrama2.dpi.inpe.br:443/scidb-sits-worker:16.9
+```
 
+**host3**
+```bash
 docker run -it -d -v /disks/d1:/disks/d1 -v /disks/d2:/disks/d2 -v /disks/d3:/disks/d3 -v /disks/d4:/disks/d4 -v /disks/d5:/disks/d5 -v /disks/d6:/disks/d6 -v /disks/d7:/disks/d7 -v /disks/d8:/disks/d8 -v /disks/d8/shared_disk/scidb/etc:/opt/scidb/16.9/etc -v /disks/d8/shared_disk/scidb/shared:/shared --name scidb-03 --restart unless-stopped --network scidb_net terrama2.dpi.inpe.br:443/scidb-sits-worker:16.9
+```
 
+**host4**
+```bash
 docker run -it -d -v /disks/d1:/disks/d1 -v /disks/d2:/disks/d2 -v /disks/d3:/disks/d3 -v /disks/d4:/disks/d4 -v /disks/d5:/disks/d5 -v /disks/d6:/disks/d6 -v /disks/d7:/disks/d7 -v /disks/d8:/disks/d8 -v /disks/d8/shared_disk/scidb/etc:/opt/scidb/16.9/etc -v /disks/d8/shared_disk/scidb/shared:/shared --name scidb-04 --restart unless-stopped --network scidb_net terrama2.dpi.inpe.br:443/scidb-sits-worker:16.9
+```
 
-
+**host5**
+```bash
 docker run -it -d -v /disks/d1:/disks/d1 -v /disks/d2:/disks/d2 -v /disks/d3:/disks/d3 -v /disks/d4:/disks/d4 -v /disks/d5:/disks/d5 -v /disks/d6:/disks/d6 -v /disks/d7:/disks/d7 -v /disks/d8:/disks/d8 -v /disks/d8/shared_disk/scidb/etc:/opt/scidb/16.9/etc -v /disks/d8/shared_disk/scidb/shared:/shared --name scidb-05 --restart unless-stopped --network scidb_net terrama2.dpi.inpe.br:443/scidb-sits-worker:16.9
 ```
 
 # Configuring Master Node 
 
-To run commands on Master SciDB instance, type the following command on **host1** terminal: 
+To start a bash shell on Master SciDB instance, type the following command on **host1** terminal: 
 ```bash
 docker exec -it scidb-01 bash
 ```
 
 ## Creating config.ini
 
-Create the config.ini. In this example, we are using the folling config.ini
+On the **host1** create the /opt/scidb/16.9/etc/config.ini file. In this example, we are using the following config.ini:
 
 ```bash
 [esensing]
@@ -132,24 +141,24 @@ data-dir-prefix-4-6=/disks/d7/scidb/esensing.4.6
 data-dir-prefix-4-7=/disks/d8/scidb/esensing.4.7
 ```
 
-PS: Don't forged to create the folders setted in config.ini file.
+**PS: Do not forget to create the folders defined in the config.ini file.**
 
-## Prepare cluster environment
+## Preparing cluster environment
 
-In order to configure and share postgres password and configure a new cluster on scidb, type the following command on **host1** terminal:
+In order to share postgres password and configure a new cluster on scidb, type the following command on container **scidb-01**:
 ```bash
 /home/scidb/Devel/prepare_hosts.sh esensing scidb-02 scidb-03 scidb-04 scidb-05
 ```
-If asked, type **y** and ENTER.
+If asked, type **y** and **ENTER**.
 
 ## Starting 
 
-In order to start scidb, type the following command on container **scidb-01**:
+To start SciDB, type the following command on container **scidb-01**:
 ```bash
 scidb.py startall esensing
-``'
+```
 
-# Installing Stream 
+## Installing Stream 
 
 In order to enable SciDB Stream on all hosts, type the following commands on **scidb-01**:
 ```bash
