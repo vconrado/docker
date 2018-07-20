@@ -1,10 +1,5 @@
 #!/bin/bash
 
-if [ "$(id -u)" != "0" ]; then
-   echo "This script must be run as root" 1>&2
-   exit 1
-fi
-
 if [ $# -ne 1 ]; then
   echo "Usage: $(basename $0) cluster_name"
   exit 1
@@ -18,7 +13,7 @@ if [[ "$SCIDB_RUNNING" -ne 0 ]]; then
   exit 2
 fi
 
-DB=$1
+export DB=$1
 
 echo "Updating config.ini ..."
 echo -e "[${DB}]\n\
@@ -32,19 +27,21 @@ logconf=${SCIDB_INSTALL_PATH}/share/scidb/log4cxx.properties\n\
 base-path=${DATA_DIR}/scidb/${SCIDB_VER}/${DB}\n\
 base-port=1239\n\
 interface=eth0\n\
-pg-port=5432" | tee -a ${SCIDB_INSTALL_PATH}/etc/config.ini > /dev/null
+pg-port=5432" | sudo -E bash -c "tee -a ${SCIDB_INSTALL_PATH}/etc/config.ini > /dev/null"
 
 echo "Adding Cluster to PostgreSQL configuration ..."
 POSTGRES_HOME=$(echo ~postgres)
-echo "127.0.0.1:5432:${DB}:postgres:postgres" | tee -a /home/${SCIDB_USR}/.pgpass > /dev/null ${POSTGRES_HOME}/.pgpass /root/.pgpass
-chown ${SCIDB_USR}:${SCIDB_USR} /home/${SCIDB_USR}/.pgpass
-chown postgres:postgres ${POSTGRES_HOME}/.pgpass
-chown root:root /root/.pgpass
-chmod go-rwx /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass
+echo "127.0.0.1:5432:${DB}:postgres:postgres" | sudo -E bash -c "tee -a /home/${SCIDB_USR}/.pgpass > /dev/null ${POSTGRES_HOME}/.pgpass /root/.pgpass"
+sudo -E bash -c "chown ${SCIDB_USR}:${SCIDB_USR} /home/${SCIDB_USR}/.pgpass"
+sudo -E bash -c "chown postgres:postgres ${POSTGRES_HOME}/.pgpass"
+sudo -E bash -c "chown root:root /root/.pgpass"
+sudo -E bash -c "chmod go-rwx /home/${SCIDB_USR}/.pgpass $POSTGRES_HOME/.pgpass /root/.pgpass"
 
 echo "Initializing cluster ..."
-sudo -u postgres $SCIDB_INSTALL_PATH/bin/scidb.py init_syscat $DB
-yes | $SCIDB_INSTALL_PATH/bin/scidb.py initall $DB
+sudo -u postgres -E bash -c "$SCIDB_INSTALL_PATH/bin/scidb.py init_syscat $DB"
+yes | sudo -E bash -c "$SCIDB_INSTALL_PATH/bin/scidb.py initall $DB"
+sudo chown -R ${SCIDB_USR}:${SCIDB_USR} /data/scidb
+
 echo
 echo "Done !"
 
