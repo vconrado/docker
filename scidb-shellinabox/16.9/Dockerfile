@@ -1,4 +1,4 @@
-FROM vconrado/scidb:16.9
+FROM scidb:16.9
 #Fonte: https://github.com/sspreitzer/docker-shellinabox
 
 ENV SIAB_USERCSS="Normal:+/etc/shellinabox/options-enabled/00+Black-on-White.css,Reverse:-/etc/shellinabox/options-enabled/00_White-On-Black.css;Colors:+/etc/shellinabox/options-enabled/01+Color-Terminal.css,Monochrome:-/etc/shellinabox/options-enabled/01_Monochrome.css" \
@@ -34,6 +34,19 @@ EXPOSE 4200
 VOLUME /etc/shellinabox /var/log/supervisor /home
 
 ADD files/entrypoint.sh /usr/local/sbin/
+ADD files/iquery.conf /home/scidb/.config/scidb/iquery.conf
+
+RUN apt-get update && apt-get install -y iptables iptables-persistent \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+ADD files/iptables.sh /root
+
+
+USER scidb
+
+RUN sed -i '120s/.*/#&/' /home/scidb/.bashrc \
+	&& echo "alias iquery=\"iquery -a -c earthdb_scidb\"" >> /home/scidb/.bashrc
 
 ENTRYPOINT ["entrypoint.sh"]
 CMD ["shellinabox"]
