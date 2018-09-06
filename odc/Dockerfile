@@ -5,7 +5,6 @@ LABEL maintainer="Vitor Gomes <vconrado@gmail.com>"
 
 ENV DATA_DIR=/datacube
 
-
 EXPOSE 80
 
 ENV LC_ALL C.UTF-8
@@ -15,7 +14,7 @@ ENV ODC_USR=datacube
 ENV ODC_PASS=datacube
 ENV ROOT_PASS=datacube
 ENV APPDIR=/home/$ODC_USR/code
-
+ENV ODC_INSTALL=/opt/odc
 
 RUN groupadd $ODC_USR \
     && useradd $ODC_USR -s /bin/bash -m -g $ODC_USR \
@@ -25,8 +24,8 @@ RUN groupadd $ODC_USR \
     && chown $ODC_USR:$ODC_USR $APPDIR \
     && mkdir -p $DATA_DIR \
     && chown $ODC_USR:$ODC_USR $DATA_DIR \
-    && mkdir -p /opt/odc \
-    && chown $ODC_USR:$ODC_USR /opt/odc
+    && mkdir -p $ODC_INSTALL \
+    && chown $ODC_USR:$ODC_USR $ODC_INSTALL
 
 # First add the NextGIS repo
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -59,7 +58,7 @@ RUN echo "$ODC_USR ALL=(ALL:ALL) NOPASSWD:ALL" | sudo EDITOR='tee -a' visudo
 
 USER $ODC_USR
 
-RUN git clone https://github.com/opendatacube/datacube-core.git $APPDIR
+RUN git clone --single-branch -b stable https://github.com/opendatacube/datacube-core.git $APPDIR
 
 WORKDIR $APPDIR
 
@@ -80,10 +79,10 @@ RUN pip3 install '.[test,celery,s3]' --upgrade \
 RUN sudo python3 setup.py install
 
 # Move docs and utils somewhere else, and remove the temp folder
-RUN mkdir -p /opt/odc \
-    && chmod +rwx /opt/odc \
-    && mv $APPDIR/utils /opt/odc/ \
-    && mv $APPDIR/docs /opt/odc/ 
+RUN mkdir -p $ODC_INSTALL \
+    && chmod +rwx $ODC_INSTALL \
+    && mv $APPDIR/utils $ODC_INSTALL \
+    && mv $APPDIR/docs $ODC_INSTALL 
     #&& rm -rf $APPDIR
 
 # Set up an entrypoint that drops environment variables into the config file
